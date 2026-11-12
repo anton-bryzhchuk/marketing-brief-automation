@@ -1,6 +1,6 @@
 # Marketing Brief Automation
 
-A personal portfolio project for an AI Automation Specialist role in marketing and web.
+Marketing Brief Automation is a personal portfolio project for an AI Automation Specialist role. It turns a short English or German brief into an SEO and LinkedIn content package, with automated checks and a separate editorial decision before anyone uses the draft.
 
 ## Problem
 
@@ -8,9 +8,29 @@ A marketer with a short brief still needs an SEO title, meta description, articl
 
 ## Solution
 
-An authenticated n8n webhook turns an English or German brief into a content package. Claude generates the draft through the Anthropic Messages API. n8n validates it, makes one corrective request when needed and records an editorial decision through a second webhook. The bundled mock exercises the same workflow without an Anthropic account.
+A marketer submits a brief through an authenticated n8n webhook. The workflow calls the Anthropic Messages API, checks the response and saves the draft for review. The bundled mock exercises the same workflow without an Anthropic account.
+
+## Skills demonstrated
+
+- n8n workflow design, REST APIs, webhooks and header authentication
+- Claude Messages API integration and structured JSON validation
+- Corrective prompts, HTTP retries and a separate error workflow
+- Local audit logging and human-in-the-loop editorial review
+- Docker Compose and end-to-end testing
 
 ## Architecture
+
+![Full n8n canvas showing brief generation, error branches, and editorial review](docs/images/workflow-main.png)
+
+*Main workflow. The upper path generates and validates briefs, and the lower path records editorial decisions.*
+
+![n8n error-handler canvas showing the Error Trigger and logging node](docs/images/workflow-error-handler.png)
+
+*Error workflow. The Error Trigger routes workflow failures to the logging node.*
+
+![n8n execution view with the successful mock generation path highlighted](docs/images/workflow-execution.png)
+
+*Successful mock execution. Green nodes show the path from the webhook to the validated response.*
 
 ```mermaid
 flowchart LR
@@ -51,26 +71,39 @@ Each HTTP Request node waits one second between failed attempts. This transport 
 
 ## How to run
 
-Requires a running Docker engine with Docker Compose, plus `curl` and `jq` for tests.
+On macOS, start Docker Desktop or another Docker engine with Compose. The tests also require `curl` and `jq`.
 
 ```sh
 cd ~/marketing-brief-automation
-cp .env.example .env
+test -f .env || cp .env.example .env
 mkdir -p data
 docker compose up -d --wait
 ```
 
 n8n is available at <http://localhost:5678>. The editor may show first-time owner setup. The published webhooks work independently of editor login. Use `docker compose down` to stop the stack while retaining its data. After editing an exported workflow, run `docker compose restart n8n` to reimport and publish it. If the host runs Docker directly on Linux, make `data/` writable by container UID 1000 before startup.
 
-For live generation, set `MOCK_LLM=false` and `ANTHROPIC_API_KEY` in `.env`, then run `docker compose up -d --wait` again. The requested default is the dated API ID `claude-sonnet-4-5-20250929`. Anthropic lists November 30, 2026 as its retirement date and `claude-sonnet-5-5` as its replacement. Set `CLAUDE_MODEL=claude-sonnet-5-5` to use the replacement. See [Anthropic's deprecation schedule](https://platform.claude.com/docs/en/about-claude/model-deprecations).
-
 ## How to test
+
+### Mock
 
 ```sh
 ./scripts/test.sh
 ```
 
 With `MOCK_LLM=true`, the suite checks a valid brief, missing key, missing audience, invalid model JSON, an HTTP 500 outage, German output, human review and saved files. It counts actual mock requests to verify both retry paths. The tests append audit records and leave the generated test artifacts in `data/`.
+
+### Live Anthropic
+
+The live test had not been run when this portfolio was verified because the local project had no Anthropic API key. Follow the setup and check the latest status in the [live test report](docs/live-test-results.md).
+
+Add `ANTHROPIC_API_KEY` to `.env`, set `MOCK_LLM=false`, and set `CLAUDE_MODEL` to a supported model such as `claude-sonnet-5-5`. Then recreate the n8n container and run the two live webhook requests.
+
+```sh
+docker compose up -d --wait --force-recreate n8n
+./scripts/test.sh live
+```
+
+The script checks both English and German responses against the package schema and writes a sanitized report with HTTP statuses, checks and durations. To return to mock mode, set `MOCK_LLM=true` and recreate n8n again.
 
 ## Example request/response
 
