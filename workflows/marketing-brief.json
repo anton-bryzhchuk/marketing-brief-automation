@@ -72,10 +72,10 @@
         "url": "={{ $env.MOCK_LLM === 'false' ? 'https://api.anthropic.com/v1/messages' : 'http://mock:3000/v1/messages' }}",
         "sendHeaders": true,
         "specifyHeaders": "json",
-        "jsonHeaders": "={{ $env.MOCK_LLM === 'false'\n    ? { 'x-api-key': $env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }\n    : { 'x-demo-run-id': $json.run_id } }}",
+        "jsonHeaders": "={{ JSON.stringify($env.MOCK_LLM === 'false' ? { 'x-api-key': $env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' } : { 'x-demo-run-id': $json.run_id }) }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ $json.request }}",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
         "options": {
           "timeout": 20000,
           "redirect": {
@@ -163,10 +163,10 @@
         "url": "={{ $env.MOCK_LLM === 'false' ? 'https://api.anthropic.com/v1/messages' : 'http://mock:3000/v1/messages' }}",
         "sendHeaders": true,
         "specifyHeaders": "json",
-        "jsonHeaders": "={{ $env.MOCK_LLM === 'false'\n    ? { 'x-api-key': $env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }\n    : { 'x-demo-run-id': $json.run_id } }}",
+        "jsonHeaders": "={{ JSON.stringify($env.MOCK_LLM === 'false' ? { 'x-api-key': $env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' } : { 'x-demo-run-id': $json.run_id }) }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ $json.request }}",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
         "options": {
           "timeout": 20000,
           "redirect": {

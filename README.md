@@ -24,7 +24,7 @@ flowchart LR
     B --> H[Error Trigger workflow]
 ```
 
-The [detailed diagram](docs/diagram.md) includes retries and the error branches. Compose starts the mock, imports both n8n workflows and publishes the workflow that owns the two webhooks. The separate Error Trigger workflow is called by n8n through the generation workflow's error setting.
+The [detailed diagram](docs/diagram.md) includes retries and the error branches. Compose starts the mock, imports and publishes both n8n workflows. The separate Error Trigger workflow is called by n8n through the generation workflow's error setting.
 
 ## How it works
 

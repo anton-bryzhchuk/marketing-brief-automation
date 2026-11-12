@@ -15,6 +15,7 @@ checksum=$(sha256sum "$workflows/error-handler.json" "$workflows/marketing-brief
 if [ ! -f "$marker" ] || [ "$(cat "$marker")" != "$checksum" ]; then
     n8n import:workflow --input="$workflows/error-handler.json"
     n8n import:workflow --input="$workflows/marketing-brief.json"
+    n8n publish:workflow --id=MarketingErrors1
     n8n publish:workflow --id=MarketingBrief01
     printf '%s\n' "$checksum" > "$marker"
 fi
