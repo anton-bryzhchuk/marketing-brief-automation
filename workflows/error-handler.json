@@ -1,0 +1,50 @@
+{
+  "name": "Marketing Brief Error Handler",
+  "id": "MarketingErrors1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "86564360-f639-513b-891d-674d888e90e2",
+      "name": "On Workflow Failure",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst data = $env.BRIEF_DATA_DIR || '/data';\nconst { execution, trigger, workflow } = $json;\nconst handled = execution?.error?.message === 'BRIEF_PROVIDER_UNAVAILABLE';\nconst run_id = execution?.id ? String(execution.id) : null;\nconst timestamp = new Date().toISOString();\nconst failure = {\n  timestamp, run_id, workflow_id: workflow?.id ?? null, status: 'error',\n  error_code: handled ? 'provider_unavailable' : 'workflow_failure',\n  stage: execution?.lastNodeExecuted ?? (trigger ? 'trigger' : null),\n};\nfs.appendFileSync(data + '/errors.jsonl', JSON.stringify(failure) + '\\n', { mode: 0o600 });\n\nif (!handled) {\n  // n8n may omit execution.id when execution saving is disabled or a trigger fails.\n  // For unexpected failures, avoid a second terminal row if the run was already recorded.\n  const path = data + '/runs.jsonl';\n  const recorded = run_id && fs.existsSync(path) &&\n    fs.readFileSync(path, 'utf8').split('\\n').some(line => {\n      try { return JSON.parse(line).run_id === run_id; } catch { return false; }\n    });\n  if (!recorded) {\n    const duration = Number(execution?.executionTime);\n    fs.appendFileSync(path, JSON.stringify({\n      timestamp, run_id, input_summary: null, status: 'error',\n      checks: [{ stage: 'workflow', passed: false }], generation_attempts: null,\n      duration_ms: Number.isFinite(duration) ? duration : null,\n    }) + '\\n', { mode: 0o600 });\n  }\n}\nreturn { json: failure };"
+      },
+      "id": "6507ac7d-d9eb-586f-81de-ab44eaa6d198",
+      "name": "Record Safe Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On Workflow Failure": {
+      "main": [
+        [
+          {
+            "node": "Record Safe Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  }
+}
