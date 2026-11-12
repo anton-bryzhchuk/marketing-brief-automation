@@ -2,3 +2,7 @@
 data/
 node_modules/
 .DS_Store
+
+# Local n8n editor and screenshot tooling
+.n8n-owner.local.json
+scripts/.playwright/

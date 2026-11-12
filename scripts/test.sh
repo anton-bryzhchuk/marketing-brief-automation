@@ -2,6 +2,12 @@
 set -eu
 
 cd "$(dirname "$0")/.."
+mode=${1:-mock}
+if [ "$#" -gt 1 ] || { [ "$mode" != mock ] && [ "$mode" != live ]; }; then
+    printf 'Usage: %s [mock|live]\n' "$0" >&2
+    exit 2
+fi
+
 base_url=${BASE_URL:-http://127.0.0.1:5678}
 if [ -z "${WEBHOOK_API_KEY:-}" ]; then
     WEBHOOK_API_KEY=$(sed -n 's/^WEBHOOK_API_KEY=//p' .env | head -n 1)
@@ -18,10 +24,14 @@ request() {
     endpoint=$1
     payload=$2
     shift 2
-    if ! http_status=$(curl --silent --show-error --max-time 120 -o "$body" -w '%{http_code}' \
+    if result=$(curl --silent --show-error --max-time 130 -o "$body" -w '%{http_code} %{time_total}' \
         "$base_url/webhook/$endpoint" -H 'Content-Type: application/json' \
         "$@" --data "$payload"); then
+        http_status=${result%% *}
+        elapsed_seconds=${result#* }
+    else
         http_status=000
+        elapsed_seconds=null
         printf '{}\n' > "$body"
     fi
 }
@@ -45,19 +55,95 @@ run_id() {
 }
 
 key="X-API-KEY: $WEBHOOK_API_KEY"
-request marketing-brief "$valid" -H "$key"
-assert_response '1 Valid brief and package' 200 '
+approved_package='
     def text_limit($max): type == "string" and test("\\S") and length <= $max;
     def text_list($min; $max):
         type == "array" and length >= $min and length <= $max and all(.[]; type == "string" and test("\\S"));
     .status == "approved" and (.run_id | type == "string") and
-    any(.checks[]; .stage == "output" and .passed and .attempt == 1) and
+    any(.checks[]; .stage == "authentication" and .passed == true) and
+    any(.checks[]; .stage == "input" and .passed == true) and
+    ([.checks[] | select(.stage == "output")] | last | .passed == true) and
     (.package |
         keys == ["keywords", "linkedin_post", "meta_description", "outline", "seo_title"] and
         (.seo_title | text_limit(60)) and (.meta_description | text_limit(155)) and
-        (.linkedin_post | text_limit(600)) and (.outline | text_list(5; 7)) and
+        (.linkedin_post | text_limit(600)) and (.outline | text_list(5; 7) and all(.[]; test("^\\s*#") | not)) and
         (.keywords | text_list(5; 8)))
 '
+
+run_live() {
+    case "$base_url" in
+        http://127.0.0.1:5678|http://localhost:5678) ;;
+        *) printf 'Live mode requires the local Compose webhook on port 5678.\n' >&2; return 2 ;;
+    esac
+
+    if ! model=$(docker compose exec -T n8n node -e '
+        const { MOCK_LLM, ANTHROPIC_API_KEY, CLAUDE_MODEL } = process.env;
+        if (MOCK_LLM !== "false" || !ANTHROPIC_API_KEY?.trim()) process.exit(1);
+        if (!/^claude-[a-z0-9-]+$/.test(CLAUDE_MODEL ?? "")) process.exit(1);
+        console.log(CLAUDE_MODEL);
+    '); then
+        printf 'Live mode requires a running stack with MOCK_LLM=false, an Anthropic key and a valid Claude model ID.\n' >&2
+        return 2
+    fi
+
+    # Build the report from an allowlist. Provider content and raw errors stay out of it.
+    report=$scratch/live-test-results.md
+    {
+        printf '# Live Anthropic test results\n\n'
+        printf -- '- Timestamp: %s\n- Configured model ID: `%s`\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$model"
+        printf '\n| Language | HTTP | Workflow status | Checks | Webhook duration | Result |\n'
+        printf '| --- | --- | --- | --- | --- | --- |\n'
+    } > "$report"
+
+    for language in en de; do
+        request marketing-brief "$(jq -nc --arg language "$language" '{
+            topic: "How AI automation saves marketing teams time",
+            audience: "marketing managers at B2B SaaS companies",
+            language: $language
+        }')" -H "$key"
+
+        if [ "$http_status" = 200 ] && jq -e "$approved_package" "$body" >/dev/null 2>&1; then
+            verdict=PASS
+        else
+            verdict=FAIL
+            failures=$((failures + 1))
+        fi
+        printf '%s Live request (%s, HTTP %s)\n' "$verdict" "$language" "$http_status"
+
+        status=$(jq -r '
+            if (.status | IN("approved", "needs_review", "rejected", "error")) then .status else "unavailable" end
+        ' "$body" 2>/dev/null) || status=unavailable
+        checks=$(jq -r '
+            [.checks[]? |
+                select(.stage | IN("authentication", "input", "output", "provider")) |
+                .stage + (if (.attempt | IN(1, 2)) then " #\(.attempt)" else "" end) +
+                ": " + (if .passed == true then "pass" else "fail" end)] |
+            if length > 0 then join(", ") else "unavailable" end
+        ' "$body" 2>/dev/null) || checks=unavailable
+        duration=$(jq -nr --argjson seconds "$elapsed_seconds" '
+            if $seconds == null then "unavailable" else (($seconds * 1000 | round | tostring) + " ms") end
+        ')
+        printf '| `%s` | %s | `%s` | %s | %s | %s |\n' \
+            "$language" "$http_status" "${status:-unavailable}" "${checks:-unavailable}" "$duration" "$verdict" >> "$report"
+    done
+    printf '\nThe checks cover the response schema and limits. Editorial review covers language quality and claims.\n' >> "$report"
+    cp "$report" docs/live-test-results.md
+    printf 'Sanitized results saved to docs/live-test-results.md.\n'
+    [ "$failures" -eq 0 ]
+}
+
+if [ "$mode" = live ]; then
+    run_live
+    exit
+fi
+
+if ! docker compose exec -T n8n node -e 'process.exit(process.env.MOCK_LLM === "false" ? 1 : 0)'; then
+    printf 'The mock suite requires a running stack with MOCK_LLM=true.\n' >&2
+    exit 2
+fi
+
+request marketing-brief "$valid" -H "$key"
+assert_response '1 Valid brief and package' 200 "$approved_package"
 approved=$(run_id)
 cp "$body" "$scratch/approved.json"
 
