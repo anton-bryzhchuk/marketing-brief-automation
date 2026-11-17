@@ -69,12 +69,13 @@ Each HTTP Request node waits one second between failed attempts. This transport 
 
 `data/runs.jsonl` contains timestamps, run IDs, input lengths and language, status, checks, generation attempts and elapsed milliseconds. Generation attempts count initial and corrective requests, while HTTP retry attempts are observable separately in mock logs. Audit files exclude keys, raw provider errors and full request text. n8n retains failed execution data for debugging, so restrict access to the n8n UI and state volume.
 
-## How to run
+## How to run in mock mode
 
-On macOS, start Docker Desktop or another Docker engine with Compose. The tests also require `curl` and `jq`.
+Start Docker Desktop or another Docker engine with Compose. The tests also require `curl` and `jq`.
+
+Run these commands from the repository root. The example environment enables `MOCK_LLM=true`, leaves `ANTHROPIC_API_KEY` blank, and supplies a local demo key for the n8n webhook. If you already have a `.env` file, set `MOCK_LLM=true` and leave `ANTHROPIC_API_KEY` blank for mock mode.
 
 ```sh
-cd ~/marketing-brief-automation
 test -f .env || cp .env.example .env
 mkdir -p data
 docker compose up -d --wait
