@@ -6,3 +6,8 @@ node_modules/
 # Local n8n editor and screenshot tooling
 .n8n-owner.local.json
 scripts/.playwright/
+
+.venv/
+venv/
+logs/
+*.log
